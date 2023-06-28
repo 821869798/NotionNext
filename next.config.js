@@ -139,7 +139,7 @@ const nextConfig = {
     dangerouslyAllowSVG: true,
     contentSecurityPolicy: "default-src 'self'; script-src 'none'; sandbox;"
   },
-
+  skipTrailingSlashRedirect: true,
   // 默认将feed重定向至 /public/rss/feed.xml
   redirects: process.env.EXPORT
     ? undefined
