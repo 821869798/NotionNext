@@ -1,0 +1,97 @@
+<h1 id="9-11-在-Go-程序中使用外部库"><a href="#9-11-在-Go-程序中使用外部库" class="headerlink" title="9.11 在 Go 程序中使用外部库"></a>9.11 在 Go 程序中使用外部库</h1><p>(本节我们将创建一个 Web 应用和它的 Google App Engine 版本,在第 19 和 21 章分别说明，当你阅读到这些章节时可以再回到这个例子。)</p>
+<p>当开始一个新项目或增加新的功能到现有的项目，你可以通过在应用程序中使用已经存在的库来节省开发时间。为了做到这一点，你必须理解库的 API（应用编程接口），那就是：库中有哪些方法可以调用，如何调用。你可能没有这个库的源代码，但作者肯定有记载的 API 以及详细介绍了如何使用它。</p>
+<p>作为一个例子，我们将使用谷歌的 API 的 urlshortener 编写一个小程序：你可以尝试一下在 <a href="http://goo.gl/">http://goo.gl/</a> 输入一个像 “<a href="http://www.destandaard.be&quot;">http://www.destandaard.be&quot;</a> 这样的URL，你会看到一个像 “<a href="http://goo.gl/O9SUO&quot;">http://goo.gl/O9SUO&quot;</a> 这样更短的 URL 返回，也就是说，在 Twitter 之类的服务中这是非常容易嵌入的。谷歌 urlshortener 服务的文档可以在 “<a href="http://code.google.com/apis/urlshortener/&quot;">http://code.google.com/apis/urlshortener/&quot;</a> 找到。(第 19 章，我们将开发自己版本的 urlshortener)。</p>
+<p>谷歌将这项技术提供给其他开发者，作为 API 我们可以在我们自己的应用程序中调用（释放到指定的限制。他们也生成了一个 Go 语言客户端库使其变得更容易。</p>
+<p>备注：谷歌让通过使用 Google API Go 客户端服务的开发者生活变得更简单，Go 客户端程序自动生成于 Google 库的 JSON 描述。更多详情在 <a href="http://code.google.com/p/google-api-go-client/">项目页面</a> 查看。</p>
+<p>下载并安装 Go 客户端库:<br>将通过 go install 实现。但是首先要验证环境变量中是否含有 <code>GOPATH</code> 变量，因为外部源码将被下载到 <code>$GOPATH/src</code> 目录下并被安装到 <code>$GOPATH/PKG/&quot;machine_arch&quot;/</code> 目录下。</p>
+<p>我们将通过在终端调用以下命令来安装 API:</p>
+<pre><code>go install google-api-go-client.google.com/hg/urlshortener/v1</code></pre><p>go install 将下载源码，编译并安装包</p>
+<p>使用 urlshortener 服务的 web 程序:<br>现在我们可以通过导入并赋予别名来使用已安装的包：</p>
+<pre><code>`import urlshortener &quot;google-api-go-client.googlecode.com/hg/urlshortener/v1&quot;`</code></pre><p>现在我们写一个 Web 应用(参见第 15 章 4-8 节)通过表单实现短地址和长地址的相互转换。我们将使用 <code>template</code> 包并写三个处理函数：root 函数通过执行表单模板来展示表单。short 函数将长地址转换为短地址，long 函数逆向转换。</p>
+<p>要调用 urlshortener 接口必须先通过 http 包中的默认客户端创建一个服务实例 urlshortenerSvc：  </p>
+<pre><code class="go">urlshortenerSvc, _ := urlshortener.New(http.DefaultClient)</code></pre>
+<p>我们通过调用服务中的 <code>Url.Insert</code> 中的 <code>Do</code> 方法传入包含长地址的 <code>Url</code> 数据结构从而获取短地址：</p>
+<pre><code class="go">url, _ := urlshortenerSvc.Url.Insert(&amp;urlshortener.Url{LongUrl: longUrl}).Do()</code></pre>
+<p>返回 <code>url</code> 的 <code>Id</code> 便是我们需要的短地址。</p>
+<p>我们通过调用服务中的 <code>Url.Get</code> 中的 <code>Do</code> 方法传入包含短地址的Url数据结构从而获取长地址：</p>
+<pre><code class="go">url, error := urlshortenerSvc.Url.Get(shwortUrl).Do()</code></pre>
+<p>返回的长地址便是转换前的原始地址。</p>
+<p>示例    9.9    <a href="examples/chapter_9/urlshortener.go">urlshortener.go</a></p>
+<pre><code class="go"><span class="keyword">package</span> main
+
+<span class="keyword">import</span> (
+     <span class="string">"fmt"</span>
+     <span class="string">"net/http"</span>
+     <span class="string">"text/template"</span>
+
+     urlshortener <span class="string">"google-api-go-client.googlecode.com/hg/urlshortener/v1"</span>
+)
+<span class="function"><span class="keyword">func</span> <span class="title">main</span><span class="params">()</span></span> {
+     http.HandleFunc(<span class="string">"/"</span>, root)
+     http.HandleFunc(<span class="string">"/short"</span>, short)
+     http.HandleFunc(<span class="string">"/long"</span>, long)
+
+     http.ListenAndServe(<span class="string">"localhost:8080"</span>, <span class="literal">nil</span>)
+}
+<span class="comment">// the template used to show the forms and the results web page to the user</span>
+<span class="keyword">var</span> rootHtmlTmpl = template.Must(template.New(<span class="string">"rootHtml"</span>).Parse(<span class="string">`</span>
+<span class="string">&lt;html&gt;&lt;body&gt;</span>
+<span class="string">&lt;h1&gt;URL SHORTENER&lt;/h1&gt;</span>
+<span class="string">{{if .}}{{.}}&lt;br /&gt;&lt;br /&gt;{{end}}</span>
+<span class="string">&lt;form action="/short" type="POST"&gt;</span>
+<span class="string">Shorten this: &lt;input type="text" name="longUrl" /&gt;</span>
+<span class="string">&lt;input type="submit" value="Give me the short URL" /&gt;</span>
+<span class="string">&lt;/form&gt;</span>
+<span class="string">&lt;br /&gt;</span>
+<span class="string">&lt;form action="/long" type="POST"&gt;</span>
+<span class="string">Expand this: http://goo.gl/&lt;input type="text" name="shortUrl" /&gt;</span>
+<span class="string">&lt;input type="submit" value="Give me the long URL" /&gt;</span>
+<span class="string">&lt;/form&gt;</span>
+<span class="string">&lt;/body&gt;&lt;/html&gt;</span>
+<span class="string">`</span>))
+<span class="function"><span class="keyword">func</span> <span class="title">root</span><span class="params">(w http.ResponseWriter, r *http.Request)</span></span> {
+    rootHtmlTmpl.Execute(w, <span class="literal">nil</span>)
+}
+<span class="function"><span class="keyword">func</span> <span class="title">short</span><span class="params">(w http.ResponseWriter, r *http.Request)</span></span> {
+     longUrl := r.FormValue(<span class="string">"longUrl"</span>)
+     urlshortenerSvc, _ := urlshortener.New(http.DefaultClient)
+     url, _ := urlshortenerSvc.Url.Insert(&amp;urlshortener.Url{LongUrl:
+     longUrl,}).Do()
+     rootHtmlTmpl.Execute(w, fmt.Sprintf(<span class="string">"Shortened version of %s is : %s"</span>,
+     longUrl, url.Id))
+}
+
+<span class="function"><span class="keyword">func</span> <span class="title">long</span><span class="params">(w http.ResponseWriter, r *http.Request)</span></span> {
+     shortUrl := <span class="string">"http://goo.gl/"</span> + r.FormValue(<span class="string">"shortUrl"</span>)
+     urlshortenerSvc, _ := urlshortener.New(http.DefaultClient)
+     url, err := urlshortenerSvc.Url.Get(shortUrl).Do()
+     <span class="keyword">if</span> err != <span class="literal">nil</span> {
+         fmt.Println(<span class="string">"error: %v"</span>, err)
+         <span class="keyword">return</span>
+
+     }
+     rootHtmlTmpl.Execute(w, fmt.Sprintf(<span class="string">"Longer version of %s is : %s"</span>,
+     shortUrl, url.LongUrl))
+}</code></pre>
+<p>执行这段代码：</p>
+<pre><code>go run urlshortener.go</code></pre><p>通过浏览 <code>http://localhost:8080/</code> 的页面来测试。</p>
+<p>为了代码的简洁我们并没有检测返回的错误状态，但是在真实的生产环境的应用中一定要做检测。</p>
+<p>将应用放入Google App Engine，我们只需要在之前的代码中作出如下改变：</p>
+<pre><code>package main -&gt; package urlshort
+func main() -&gt; func init()</code></pre><p>创建一个和包同名的目录 <code>urlshort</code>，并将以下两个安装目录复制到这个目录：</p>
+<pre><code>google-api-go-client.googlecode.com/hg/urlshortener
+google-api-go-client.googlecode.com/hg/google-api</code></pre><p>此外还要配置下配置文件 <code>app.yaml</code>，内容如下：</p>
+<pre><code class="yaml"><span class="attr">application:</span> <span class="string">urlshort</span>
+<span class="attr">version:</span> <span class="number">0</span><span class="bullet">-1</span><span class="bullet">-test</span>
+<span class="attr">runtime:</span> <span class="string">go</span>
+<span class="attr">api_version:</span> <span class="number">3</span>
+<span class="attr">handlers:</span>
+<span class="attr">- url:</span> <span class="string">/.*</span>
+<span class="attr">script:</span> <span class="string">_go_app</span></code></pre>
+<p>现在你可以去到你的项目目录并在终端运行：<code>dev_appserver.py urlshort</code></p>
+<p>在浏览器打开你的 Web应用：<a href="http://localhost:8080。">http://localhost:8080。</a></p>
+<h2 id="链接"><a href="#链接" class="headerlink" title="链接"></a>链接</h2><ul>
+<li><a href="directory.md">目录</a></li>
+<li>上一节：<a href="09.10.md">Go 的外部包和项目</a></li>
+<li>下一章：<a href="10.0.md">结构（struct）与方法（method）</a></li>
+</ul>
