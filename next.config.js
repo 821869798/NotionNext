@@ -69,7 +69,7 @@ const nextConfig = {
       'ko-fi.com'
     ]
   },
-
+  skipTrailingSlashRedirect: true,
   // 默认将feed重定向至 /public/rss/feed.xml
   async redirects() {
     return [
